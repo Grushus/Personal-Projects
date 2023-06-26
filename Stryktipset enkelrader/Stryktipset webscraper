@@ -1,0 +1,167 @@
+# Genererar enkelrader utifrån dina egna odds
+
+from time import sleep
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.chrome.options import Options
+from selenium.common.exceptions import NoSuchElementException
+import random
+import pandas as pd
+from tkinter import filedialog
+from tkinter import *
+import os
+
+while True:
+    game = int(input("""Vilket spel vill du generera enkelrader för?
+---
+1- Stryktipset
+2- Europatipset
+---
+"""))
+    if game == 1:
+        url = "https://spela.svenskaspel.se/stryktipset"
+        game = "Stryktipset"
+        break
+    elif game == 2:
+        url = "https://spela.svenskaspel.se/europatipset"
+        game = "Europatipset"
+        break
+    else:
+        print("---\nFörsök igen\n---")
+        continue
+os.system("CLS") # Clearar consolen så det blir lättare för användaren att läsa
+
+print("Hämtar kupong info...")
+
+# Öppnar en selenium webdriver i "headless" form alltså så att ingen flik öppnas. Därifrån skrapas kupong informationen
+try:
+    chrome_options = Options()
+    chrome_options.add_argument("--headless")
+    driver = webdriver.Chrome(options=chrome_options)
+    driver.get(url)
+
+except NoSuchElementException:
+    os.system("CLS")
+    print(f"---\n{game} har inte fått en ny kupong. Kör programmet igen när hemsidan visar en ny kupong.\nProgrammet stänger av sig automatiskt om 30 sekunder...\n---")
+    sleep(30)
+    exit()
+
+# Skapar ett Tkinter root window
+root = Tk()
+root.withdraw()
+
+os.system("CLS")
+
+while True:
+    try: 
+        rader = int(input("Hur många enkelrader vill du spela?:\n"))
+        if rader > 10000: # Maxantalet enkelrader svenskaspel tillåter är 10000
+            raise ValueError
+        else: break
+    except ValueError:
+        print("Du kan inte ha mer än 10 000 rader. Försök igen")
+
+tips = ["1","2","3","4","5","6","7","8","9","10","11","12","13"] 
+df = pd.DataFrame(columns=["Match_1","Match_2","Match_3","Match_4","Match_5","Match_6","Match_7",
+"Match_8","Match_9","Match_10","Match_11","Match_12","Match_13"],
+index=list("E"*rader)) # Svenskaspel kräver ett index med bokstaven "E" för att visa på enkelrad när man lämnar in filen
+    
+for x in tips:
+    while True:
+        try:
+            resultat = []
+            hemma_lag = driver.find_element(By.XPATH, ".//*[@id='tipsen']/div[2]/div[2]/div[1]/div/div[2]/div/div["+x+"]/a/div[1]/div/span[1]").text # Hämtar hemma lag med XPATH
+            borta_lag = driver.find_element(By.XPATH, ".//*[@id='tipsen']/div[2]/div[2]/div[1]/div/div[2]/div/div["+x+"]/a/div[1]/div/span[3]").text # Hämtar borta lag med XPATH
+            print(f"Match {x}: {hemma_lag} - {borta_lag}")
+            print("Procent för: ")
+
+            procent_1 = int(input(f"(1) [{hemma_lag}]\n   %\r"))
+            if procent_1 < 0 or procent_1 > 100:
+                print("""
+---
+Din siffra måste ha ett värde mellan 0 och 100
+---
+""")
+                continue
+
+            procent_x = int(input(f"(x) [lika] (Procent som återstår: {100 - procent_1}%)\n   %\r"))
+            if procent_x < 0 or procent_x > 100:
+                print("""
+---
+Din siffra måste ha ett värde mellan 0 och 100
+---
+""")
+                continue
+
+            procent_2 = int(input(f"(2) [{borta_lag}] (Procent som återstår: {100 - (procent_1 + procent_x)}%)\n   %\r"))
+            if procent_2 < 0 or procent_2 > 100:
+                print("""
+---
+Din siffra måste ha ett värde mellan 0 och 100
+---
+""")
+                continue
+
+            equal = procent_1 + procent_x + procent_2
+            if equal != 100:
+                raise ValueError
+            else: break
+        except ValueError:
+            os.system("CLS")
+            print(f"""[Försök igen]
+Dina procentvärden för match {x} måste vara likamed 100%. 
+Just nu är dom likamed [{equal}]%:
+---
+[{hemma_lag}] (1) - {procent_1}%
+[lika] (x) - {procent_x}%
+[{borta_lag}] (2) - {procent_2}%
+---
+""")
+
+    os.system("CLS")
+    for _ in range(rader): # Genererar så många siffror som rader baserat på de tillfördelade procentenheterna
+        rand_num = random.randint(1,100)
+        if rand_num <= procent_1:
+            resultat.append("1")
+        elif rand_num <= procent_1 + procent_2:
+            resultat.append("x")
+        else:
+            resultat.append("2")
+    df["Match_"+x] = resultat
+os.system("CLS")
+while True:
+    save_dataframe = int(input("""Dina enkelrader har skapats:
+---
+1 - Spara enkelrader
+2 - Visa enkelrader
+3 - Avsluta programmet
+---
+"""))
+    if save_dataframe == 1:
+        # Öppnar en fil dialog för att anvädaren ska välja vart den vill spara sina enkelrader
+        try:
+            file_path = filedialog.asksaveasfilename(defaultextension=".txt", filetypes=(("Text files", "*.txt"), ("All files", "*.*")))
+            # Sparar enkelraderna med översta raden som europatipset eller stryktipset
+            df.to_csv(file_path, index=True, header=False)
+            with open(file_path, 'r+') as file:
+                content = file.read()
+                file.seek(0, 0)
+                file.write(f"{game}\n" + content)
+            print("Enkelrader sparade!")
+            print("Avslutar om 30 sekunder... du kan också avsluta manuellt")
+            sleep(30)
+            break
+        except FileNotFoundError:
+            print("---\nDu sparade aldrig filen, var vänlig försök igen eller avsluta programmet om så önskas\n---")
+            continue
+    elif save_dataframe == 2:
+        print(f"---\n{df}\n---")
+        continue
+
+    elif save_dataframe == 3:
+        print("Avslutar om 30 sekunder... Du kan också avsluta manuellt")
+        sleep(30)
+        exit()
+
+    else:
+        print("---\nFörsök igen\n---")
